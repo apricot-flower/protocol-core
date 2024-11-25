@@ -82,8 +82,8 @@ type DataInter interface {
 	Value() interface{}
 }
 
-// ProtocolDlt645Model dlt698.45 模型
-type ProtocolDlt645Model struct {
+// ProtocolDlt698Model dlt698.45 模型
+type ProtocolDlt698Model struct {
 	Length  uint16         `json:"length"`         //长度域
 	Control *ControlRegion `json:"control_region"` //控制域
 	Address *AddressRegion `json:"address_region"` //地址域
@@ -91,7 +91,7 @@ type ProtocolDlt645Model struct {
 }
 
 // DecodeByStr 根据字符串解析
-func (p *ProtocolDlt645Model) DecodeByStr(str string) error {
+func (p *ProtocolDlt698Model) DecodeByStr(str string) error {
 	arr, err := hex.DecodeString(strings.ReplaceAll(str, " ", ""))
 	if err != nil {
 		return err
@@ -100,7 +100,7 @@ func (p *ProtocolDlt645Model) DecodeByStr(str string) error {
 }
 
 // DecodeByBytes 根据字节数组解析
-func (p *ProtocolDlt645Model) DecodeByBytes(frame []byte) error {
+func (p *ProtocolDlt698Model) DecodeByBytes(frame []byte) error {
 	buf := bytes.NewReader(frame)
 	//解析起始字符
 	var startChar byte
@@ -170,7 +170,7 @@ func (p *ProtocolDlt645Model) DecodeByBytes(frame []byte) error {
 	return err
 }
 
-func (p *ProtocolDlt645Model) Encoder() ([]byte, error) {
+func (p *ProtocolDlt698Model) Encoder() ([]byte, error) {
 	controlArray, err := p.Control.encoder()
 	if err != nil {
 		return nil, err
@@ -224,7 +224,7 @@ func (p *ProtocolDlt645Model) Encoder() ([]byte, error) {
 	return encodeArray, nil
 }
 
-func (p *ProtocolDlt645Model) Cs(data []byte) []byte {
+func (p *ProtocolDlt698Model) Cs(data []byte) []byte {
 	data = append(data, 0x00, 0x00)
 	fcs := p.cs16(data)
 	fcs ^= 0xffff
@@ -235,7 +235,7 @@ func (p *ProtocolDlt645Model) Cs(data []byte) []byte {
 	return []byte{byte(c), byte(c1)}
 }
 
-func (p *ProtocolDlt645Model) cs16(data []byte) int {
+func (p *ProtocolDlt698Model) cs16(data []byte) int {
 	length := len(data) - 2
 	index := 0
 	CS16 := 0xffff
@@ -369,6 +369,16 @@ func (a *APDU) decoder(buf *bytes.Reader) error {
 	}
 	if a.Data.hasFollowReport() {
 		//存在附加信息域
+		var hasFollowReport byte
+		if err := binary.Read(buf, binary.BigEndian, &hasFollowReport); err != nil {
+			return errors.New("decode FollowReport exist flag err:" + err.Error())
+		}
+		if hasFollowReport == 0x01 {
+			a.FollowReport = &FollowReport{}
+			if err := a.TimeTag.decoder(buf); err != nil {
+				return err
+			}
+		}
 	}
 	if a.Data.hasTimeTag() {
 		//存在时间标签
@@ -402,7 +412,16 @@ func (a *APDU) encoder() ([]byte, error) {
 	encodeArray = append(encodeArray, dataArray...)
 	//解析附加信息域
 	if a.Data.hasFollowReport() {
-
+		if a.FollowReport != nil {
+			encodeArray = append(encodeArray, 0x01)
+			followReportArray, err := a.FollowReport.encoder()
+			if err != nil {
+				return nil, err
+			}
+			encodeArray = append(encodeArray, followReportArray...)
+		} else {
+			encodeArray = append(encodeArray, 0x00)
+		}
 	}
 	//解析时间标签
 	if a.Data.hasTimeTag() {
@@ -411,9 +430,8 @@ func (a *APDU) encoder() ([]byte, error) {
 			timeTagArray, err := a.TimeTag.encoder()
 			if err != nil {
 				return nil, err
-			} else {
-				encodeArray = append(encodeArray, timeTagArray...)
 			}
+			encodeArray = append(encodeArray, timeTagArray...)
 		} else {
 			encodeArray = append(encodeArray, 0x00)
 		}
@@ -451,12 +469,84 @@ func (t *TimeTag) encoder() ([]byte, error) {
 }
 
 type FollowReport struct {
+	aResultNormal []*ResultNormal
+	aResultRecord []*ResultRecord
 }
 
-func (f FollowReport) decoder(buf *bytes.Reader) error {
+func (f *FollowReport) decoder(buf *bytes.Reader) error {
+	frType, err := buf.ReadByte()
+	if err != nil {
+		return errors.New("FollowReport decode err:" + err.Error())
+	}
+	length, err := buf.ReadByte()
+	if err != nil {
+		return errors.New("FollowReport decode err:" + err.Error())
+	}
+	if length == 0 {
+		return nil
+	}
+	switch frType {
+	case 1:
+		f.aResultNormal = make([]*ResultNormal, length)
+		for i := 0; i < int(length); i++ {
+			f.aResultNormal[i] = &ResultNormal{}
+			if err := f.aResultNormal[i].decoder(buf); err != nil {
+				return err
+			}
+		}
+	case 2:
+		f.aResultRecord = make([]*ResultRecord, length)
+		for i := 0; i < int(length); i++ {
+			f.aResultRecord[i] = &ResultRecord{}
+			if err := f.aResultRecord[i].decoder(buf); err != nil {
+				return err
+			}
+		}
+	default:
+		return errors.New("followReport frame type error")
+	}
 	return nil
 }
 
-func (f FollowReport) encoder() ([]byte, error) {
-	return nil, nil
+func (f *FollowReport) encoder() ([]byte, error) {
+	if f.aResultRecord == nil && f.aResultNormal == nil {
+		return nil, errors.New("followReport existed ResultRecord and ResultNormal")
+	}
+	var encodeArray []byte
+	if f.aResultNormal != nil {
+		encodeArray = append(encodeArray, 1, byte(len(f.aResultNormal)))
+		for _, normal := range f.aResultNormal {
+			if normalArray, err := normal.encoder(); err != nil {
+				return nil, err
+			} else {
+				encodeArray = append(encodeArray, normalArray...)
+			}
+		}
+		return encodeArray, nil
+	}
+	encodeArray = append(encodeArray, 2, byte(len(f.aResultRecord)))
+	for _, record := range f.aResultRecord {
+		if recordArray, err := record.encoder(); err != nil {
+			return nil, err
+		} else {
+			encodeArray = append(encodeArray, recordArray...)
+		}
+	}
+	return encodeArray, nil
+}
+
+func (f *FollowReport) BuildByResultNormal(a ...*ResultNormal) error {
+	if f.aResultRecord != nil {
+		return errors.New("followReport existed ResultRecord")
+	}
+	f.aResultNormal = a
+	return nil
+}
+
+func (f *FollowReport) BuildByResultRecord(a ...*ResultRecord) error {
+	if f.aResultNormal != nil {
+		return errors.New("followReport existed ResultNormal")
+	}
+	f.aResultRecord = a
+	return nil
 }
