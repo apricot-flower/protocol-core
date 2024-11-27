@@ -15,11 +15,7 @@ const (
 	RELAY_STATION_COMMAND    byte = 0x03
 )
 
-var Afns map[byte]PostAFN
-
-func init() {
-	Afns = make(map[byte]PostAFN)
-}
+var Afns = make(map[byte]PostAFN)
 
 func Translate(flag byte) Afn {
 	if afnFunc, ok := Afns[flag]; ok {

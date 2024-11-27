@@ -28,21 +28,20 @@ func (d *Dlt13761statute) Decode(frame []byte) error {
 	buf := bytes.NewReader(frame)
 	var startChar uint8
 	if err = binary.Read(buf, binary.LittleEndian, &startChar); err != nil {
-		return err
+		return errors.New("decode dlt1376.1 startChar err:" + err.Error())
 	}
 	if startChar != DLT13761_START_CHAR {
-		return errors.New("invalid start char")
+		return errors.New("decode dlt1376.1 frame err: invalid start char")
 	}
-	var length1 uint16
-	var length2 uint16
+	var length1, length2 uint16
 	if err = binary.Read(buf, binary.LittleEndian, &length1); err != nil {
-		return err
+		return errors.New("decode dlt1376.1 length err:" + err.Error())
 	}
 	if err = binary.Read(buf, binary.LittleEndian, &length2); err != nil {
-		return err
+		return errors.New("decode dlt1376.1 length err:" + err.Error())
 	}
 	if length1 != length2 {
-		return errors.New("invalid length")
+		return errors.New("decode dlt1376.1 length err: invalid length")
 	}
 	if err = d.lengthHandle(length1); err != nil {
 		return err
@@ -51,7 +50,7 @@ func (d *Dlt13761statute) Decode(frame []byte) error {
 		return err
 	}
 	if startChar != DLT13761_START_CHAR {
-		return errors.New("invalid start char")
+		return errors.New("decode dlt1376.1 startChar err: invalid start char")
 	}
 	d.Control = &ControlFiled{}
 	if err = d.Control.Decode(buf); err != nil {
@@ -156,14 +155,14 @@ type ControlFiled struct {
 func (c *ControlFiled) Decode(buf *bytes.Reader) error {
 	control, err := buf.ReadByte()
 	if err != nil {
-		return err
+		return errors.New("decode dlt1376.1 control err:" + err.Error())
 	}
 	c.DIR = strconv.Itoa(int((control >> 7) & 1))
 	c.PRM = strconv.Itoa(int((control >> 6) & 1))
 	c.FCBorACD = strconv.Itoa(int((control >> 5) & 1))
 	c.FCV = strconv.Itoa(int((control >> 4) & 1))
 	c.FuncCode = fmt.Sprintf("%d%d%d%d", (control>>3)&1, (control>>2)&1, (control>>1)&1, control&1)
-	return err
+	return nil
 }
 
 func (c *ControlFiled) Encode() ([]byte, error) {
@@ -249,7 +248,7 @@ type LinkUserData struct {
 func (l *LinkUserData) Decode(buf *bytes.Reader, dataLength uint16, hasTp bool, dir string, acd string) error {
 	var err error
 	if err = binary.Read(buf, binary.LittleEndian, &l.AFN); err != nil {
-		return err
+		return errors.New("decode 1376.1 AFN err:" + err.Error())
 	}
 	l.Seq = &SEQ{}
 	if err = l.Seq.Decode(buf); err != nil {
