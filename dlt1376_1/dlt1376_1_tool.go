@@ -1,104 +1,133 @@
 package dlt1376_1
 
-import (
-	"encoding/hex"
-	"fmt"
-	"strings"
+import "fmt"
+
+//确认否认报文示例：68 32 00 32 00 68 0B 03 44 04 00 00 00 61 00 00 01 00 B8 16
+
+// FrameDirection 报文方向
+type FrameDirection byte
+
+const (
+	DOWN FrameDirection = 0 //下行
+	UP   FrameDirection = 1 //上行
 )
 
-func Decode(frameStr string) (*Dlt13761statute, error) {
-	frameStr = strings.ReplaceAll(frameStr, " ", "")
-	frameBytes, err := hex.DecodeString(frameStr)
-	if err != nil {
-		return nil, err
-	}
-	return DecodeBytes(frameBytes)
-}
-
-func DecodeBytes(frame []byte) (*Dlt13761statute, error) {
-	statute := &Dlt13761statute{}
-	err := statute.Decode(frame)
-	if err != nil {
-		return nil, err
-	}
-	return statute, nil
-}
-
-// BuildTp 生成一个时间标签
-// pfc 启动帧帧序号计数器PFC
-// delayed 允许发送传输延时时间
-func BuildTp(pfc byte, delayed byte) (*Tp, error) {
-	tp := &Tp{PFC: pfc, Delayed: delayed}
-	err := tp.BuildByNow()
-	return tp, err
-}
-
-// Reset 生成复位命令
+// CreateConfirmDenyF1OrF2 创建一个确认否认报文, F1：全部确认, F2：全部否认
 // address 地址
-// PSEQorRSEQ 帧序列号
-// hasTp 是否包含时间标签
-// fn
-// pw 消息认证码字段
-func Reset(address string, PSEQorRSEQ byte, tp *Tp, fn uint64, pw []byte) ([]byte, error) {
-	control := &ControlFiled{DIR: "0", PRM: "1", FCBorACD: "0", FCV: "1", FuncCode: "0001"}
-	addressFiled := &AddressFiled{AddressType: "0", MSA: "0001010"}
-	err := addressFiled.Build(address)
+// direction 报文方向
+// FCBorACD
+// funcCode 控制域中的功能码
+// f F1， F2
+// frameNumber 序号
+// tp 是否包含时间标签
+func CreateConfirmDenyF1OrF2(address string, direction FrameDirection, fCBorACD byte, funcCode byte, f byte, frameNumber byte, tp bool) ([]byte, error) {
+	dlt13761Statute, err := build(address, direction, fCBorACD, funcCode)
 	if err != nil {
 		return nil, err
 	}
-	resetCommand := &ResetCommand{}
-	_ = resetCommand.Append(&Dlt13761Data{P: 0, F: fn, Data: nil})
-	tpFlag := "0"
-	if tp != nil {
-		tpFlag = "1"
+	if tp {
+		dlt13761Statute.Data.Seq = &SEQ{TpV: "1", FIR: "1", FIN: "1", CON: "0", PSEQorRSEQ: fmt.Sprintf("%04b", frameNumber&0x0F)}
+		tpv := &Tp{}
+		err = tpv.BuildByNow()
+		if err != nil {
+			return nil, err
+		}
+		dlt13761Statute.Data.Aux = &AUX{TP: tpv}
+	} else {
+		dlt13761Statute.Data.Seq = &SEQ{TpV: "0", FIR: "1", FIN: "1", CON: "0", PSEQorRSEQ: fmt.Sprintf("%04b", frameNumber&0x0F)}
 	}
-	data := &LinkUserData{Seq: &SEQ{TpV: tpFlag, FIR: "1", FIN: "1", CON: "1", PSEQorRSEQ: fmt.Sprintf("%04b", PSEQorRSEQ&0xF)}, DataUnit: resetCommand, Aux: &AUX{PW: pw, TP: tp}}
-	statute := &Dlt13761statute{Control: control, Address: addressFiled, Data: data}
-	return statute.Encode()
+	dlt13761Statute.Data.Data = &ConfirmDeny{F: uint64(f)}
+	return dlt13761Statute.Encode()
 }
 
-// CreateLinkInterfaceDetection 链路接口检测
+// CreateResetDown 创建下行复位命令
 // address 地址
-// PSEQorRSEQ 帧序列号
-func CreateLinkInterfaceDetection(address string, PSEQorRSEQ byte, fn uint64) ([]byte, error) {
-	control := &ControlFiled{DIR: "1", PRM: "1", FCBorACD: "0", FCV: "0", FuncCode: "1001"}
-	addressFiled := &AddressFiled{AddressType: "0", MSA: "0"}
-	err := addressFiled.Build(address)
+// FCBorACD
+// funcCode 控制域中的功能码
+// f F1， F2
+// frameNumber 序号
+// pw
+// tp 是否包含时间标签
+func CreateResetDown(address string, fCBorACD byte, funcCode byte, f byte, frameNumber byte, pw []byte, tp bool) ([]byte, error) {
+	dlt13761Statute, err := build(address, DOWN, fCBorACD, funcCode)
 	if err != nil {
 		return nil, err
 	}
-	linkInterfaceDetection := &LinkInterfaceDetection{}
-	err = linkInterfaceDetection.Append(&Dlt13761Data{P: 0, F: fn, Data: nil})
-	if err != nil {
-		return nil, err
+	if tp {
+		dlt13761Statute.Data.Seq = &SEQ{TpV: "1", FIR: "1", FIN: "1", CON: "0", PSEQorRSEQ: fmt.Sprintf("%04b", frameNumber&0x0F)}
+		tpv := &Tp{}
+		err = tpv.BuildByNow()
+		if err != nil {
+			return nil, err
+		}
+		dlt13761Statute.Data.Aux = &AUX{TP: tpv, PW: pw}
+	} else {
+		dlt13761Statute.Data.Seq = &SEQ{TpV: "0", FIR: "1", FIN: "1", CON: "0", PSEQorRSEQ: fmt.Sprintf("%04b", frameNumber&0x0F)}
 	}
-	data := &LinkUserData{Seq: &SEQ{TpV: "0", FIR: "1", FIN: "1", CON: "1", PSEQorRSEQ: fmt.Sprintf("%04b", PSEQorRSEQ&0xF)}, DataUnit: linkInterfaceDetection}
-	statute := &Dlt13761statute{Control: control, Address: addressFiled, Data: data}
-	return statute.Encode()
+	dlt13761Statute.Data.Data = &Reset{F: uint64(f)}
+	return dlt13761Statute.Encode()
 }
 
-// CreateRelayStationCommandDownF1 中继命令下行,中继站工作状态控制
+// CreateLink 创建链路接口检测命令
 // address 地址
-// PSEQorRSEQ 帧序列号
-// fn
-// switchControl 值班机/备份机切换控制
-// allowFlag 值班机中继转发允许标志
-func CreateRelayStationCommandDownF1(address string, PSEQorRSEQ byte, fn uint64, switchControl byte, allowFlag byte) ([]byte, error) {
-	control := &ControlFiled{DIR: "0", PRM: "1", FCBorACD: "0", FCV: "1", FuncCode: "0001"}
-	addressFiled := &AddressFiled{AddressType: "0", MSA: "0001010"}
-	err := addressFiled.Build(address)
+// f F1， F2, F3
+// frameNumber 序号
+func CreateLink(address string, f byte, frameNumber byte) ([]byte, error) {
+	dlt13761Statute, err := build(address, UP, 0, 9)
 	if err != nil {
 		return nil, err
 	}
-	relayStationCommand := &RelayStationCommand{}
-	relayStationCommand.Direction("0")
-	err = relayStationCommand.Append(&Dlt13761Data{P: 0, F: fn, Data: &RelayStationCommandDownF1{SwitchControl: switchControl, AllowFlag: allowFlag}})
-	if err != nil {
-		return nil, err
-	}
-	data := &LinkUserData{Seq: &SEQ{TpV: "0", FIR: "1", FIN: "1", CON: "1", PSEQorRSEQ: fmt.Sprintf("%04b", PSEQorRSEQ&0xF)}, DataUnit: relayStationCommand}
-	statute := &Dlt13761statute{Control: control, Address: addressFiled, Data: data}
-	return statute.Encode()
+	dlt13761Statute.Data.Seq = &SEQ{TpV: "0", FIR: "1", FIN: "1", CON: "1", PSEQorRSEQ: fmt.Sprintf("%04b", frameNumber&0x0F)}
+	dlt13761Statute.Data.Data = &LinkInterfaceDetection{F: uint64(f)}
+	return dlt13761Statute.Encode()
 }
 
-//中继命令上行
+// CreateRelayStationCommandDownF1 创建下行中继站命令-中继站工作状态控制
+// address 地址
+// frameNumber 序号
+// MSSwitchControl D0～D1 值班机/备份机切换控制：D0=0、D1=0：表示不切换；D0=1、D1=1：表示切换；D0、D1为其他是无效
+// DutyForwardFlag D2～D3 值班机中继转发允许标志：D2=0、D3=0：表示不允许；D2=1、D3=1：表示允许；D2、D3为其他是无效
+func CreateRelayStationCommandDownF1(address string, frameNumber byte, mSSwitchControl string, dutyForwardFlag string) ([]byte, error) {
+	dlt13761Statute, err := build(address, DOWN, 0, 4)
+	if err != nil {
+		return nil, err
+	}
+	dlt13761Statute.Data.Seq = &SEQ{TpV: "0", FIR: "1", FIN: "1", CON: "1", PSEQorRSEQ: fmt.Sprintf("%04b", frameNumber&0x0F)}
+	dlt13761Statute.Data.Data = &RelayStationCommand{F: 1, Cmd: &ControlOfWorkingStatusOfRelayStation{MSSwitchControl: mSSwitchControl, DutyForwardFlag: dutyForwardFlag}}
+	return dlt13761Statute.Encode()
+}
+
+// CreateRelayStationCommandDownF234 创建下行中继站命令-f2,f3,f4
+// address 地址
+// frameNumber 序号
+// f
+func CreateRelayStationCommandDownF234(address string, frameNumber byte, f uint64) ([]byte, error) {
+	dlt13761Statute, err := build(address, DOWN, 0, 4)
+	if err != nil {
+		return nil, err
+	}
+	dlt13761Statute.Data.Seq = &SEQ{TpV: "0", FIR: "1", FIN: "1", CON: "1", PSEQorRSEQ: fmt.Sprintf("%04b", frameNumber&0x0F)}
+	dlt13761Statute.Data.Data = &RelayStationCommand{F: f}
+	return dlt13761Statute.Encode()
+}
+
+// 构建并不完整的地址
+func build(address string, direction FrameDirection, fCBorACD byte, funcCode byte) (*StatuteDlt13761, error) {
+	dlt13761Statute := &StatuteDlt13761{}
+	dlt13761Statute.Address = &AddressFiled{AddressType: "0", MSA: "0001010"}
+	err := dlt13761Statute.Address.Build(address)
+	if err != nil {
+		return nil, err
+	}
+	FCBorACD := "1"
+	if fCBorACD == 0 {
+		FCBorACD = "0"
+	}
+	if direction == DOWN {
+		dlt13761Statute.Control = &ControlFiled{DIR: "0", PRM: "0", FCBorACD: FCBorACD, FCV: "0", FuncCode: fmt.Sprintf("%04b", funcCode&0x0F)}
+	} else {
+		dlt13761Statute.Control = &ControlFiled{DIR: "1", PRM: "1", FCBorACD: FCBorACD, FCV: "0", FuncCode: fmt.Sprintf("%04b", funcCode&0x0F)}
+	}
+	dlt13761Statute.Data = &ApplicationLayer{}
+	return dlt13761Statute, nil
+}

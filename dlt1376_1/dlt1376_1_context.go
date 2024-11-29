@@ -2,46 +2,101 @@ package dlt1376_1
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"sort"
 	"strconv"
 )
 
-const (
-	COMFIRM_DENY             byte = 0x00
-	RESET_COMMAND            byte = 0x01
-	LINK_INTERFACE_DETECTION byte = 0x02 //链路接口检测
-	RELAY_STATION_COMMAND    byte = 0x03
-)
+type plugIn func() LinkDataInter
 
-var Afns = make(map[byte]PostAFN)
+var afnMap = make(map[byte]plugIn)
 
-func Translate(flag byte) Afn {
-	if afnFunc, ok := Afns[flag]; ok {
-		return afnFunc()
+func init() {
+	//确认∕否认
+	afnMap[ConfirmDenyIdent] = func() LinkDataInter {
+		return &ConfirmDeny{}
+	}
+	//复位
+	afnMap[ResetIdent] = func() LinkDataInter {
+		return &Reset{}
+	}
+	//链路接口检测
+	afnMap[LinkInterfaceDetectionIdent] = func() LinkDataInter {
+		return &LinkInterfaceDetection{}
+	}
+	//中继站命令
+	afnMap[RelayStationCommandIdent] = func() LinkDataInter {
+		return &RelayStationCommand{}
+	}
+	//设置参数
+	afnMap[0x04] = func() LinkDataInter {
+		return nil
+	}
+	//控制命令
+	afnMap[0x05] = func() LinkDataInter {
+		return nil
+	}
+	//身份认证及密钥协商
+	afnMap[0x06] = func() LinkDataInter {
+		return nil
+	}
+	//备用
+	afnMap[0x07] = func() LinkDataInter {
+		return nil
+	}
+	//请求被级联终端主动上报
+	afnMap[0x08] = func() LinkDataInter {
+		return nil
+	}
+	//请求终端配置
+	afnMap[0x09] = func() LinkDataInter {
+		return nil
+	}
+	//查询参数
+	afnMap[0x0A] = func() LinkDataInter {
+		return nil
+	}
+	//请求任务数据
+	afnMap[0x0B] = func() LinkDataInter {
+		return nil
+	}
+	//请求1类数据（实时数据）
+	afnMap[0x0C] = func() LinkDataInter {
+		return nil
+	}
+	//请求2类数据（历史数据）
+	afnMap[0x0D] = func() LinkDataInter {
+		return nil
+	}
+	//请求3类数据（事件数据）
+	afnMap[0x0E] = func() LinkDataInter {
+		return nil
+	}
+	//文件传输
+	afnMap[0x0F] = func() LinkDataInter {
+		return nil
+	}
+	//数据转发
+	afnMap[0x10] = func() LinkDataInter {
+		return nil
+	}
+}
+
+func translate(afn byte) LinkDataInter {
+	if inter, ok := afnMap[afn]; ok {
+		return inter()
 	}
 	return nil
 }
 
-type PostAFN func() Afn
-
-type Dlt13761Data struct {
-	P    uint64
-	F    uint64
-	Data Dlt13761DataInter
-}
-
-type Afn interface {
-	Decode(buf *bytes.Reader) error   //解码
-	Encode() ([]byte, error)          //编码
-	Idents() ([]*Dlt13761Data, error) //获取数据
-	Flag() (byte, string)             //获取AFN和他的说明
-	HasAux() bool                     //是否存在附加信息域
-	Append(*Dlt13761Data) error       //添加一个数据项
-}
-
-func analyzeUnit(daDt []byte) ([]uint64, []uint64) {
+func analyzeUnit(buf *bytes.Reader) ([]uint64, []uint64, error) {
+	var daDt [4]byte
+	err := binary.Read(buf, binary.LittleEndian, &daDt)
+	if err != nil {
+		return nil, nil, errors.New("analyze data_unit err: " + err.Error())
+	}
 	var pn []uint64
 	da1 := daDt[0]
 	da2 := daDt[1]
@@ -79,7 +134,7 @@ func analyzeUnit(daDt []byte) ([]uint64, []uint64) {
 	sort.Slice(fn, func(i, j int) bool {
 		return fn[i] < fn[j]
 	})
-	return pn, fn
+	return pn, fn, nil
 }
 
 func encodeUnit(pn uint64, fn uint64) ([]byte, error) {
@@ -137,19 +192,4 @@ func setBit(n int) (byte, error) {
 		return 0, err
 	}
 	return byte(value), nil
-}
-
-func checkData(data ...byte) bool {
-	for _, d := range data {
-		if d == 0xEE {
-			return false
-		}
-	}
-	return true
-}
-
-func sortByF(dataSlice []*Dlt13761Data) {
-	sort.Slice(dataSlice, func(i, j int) bool {
-		return dataSlice[i].F < dataSlice[j].F
-	})
 }

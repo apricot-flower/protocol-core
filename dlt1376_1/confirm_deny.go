@@ -5,62 +5,49 @@ import (
 	"errors"
 )
 
-var _ Afn = (*ComFirmDeny)(nil)
+var _ LinkDataInter = (*ConfirmDeny)(nil)
 
-// ComFirmDeny 确认否认
-type ComFirmDeny struct {
-	pn uint64
-	fn uint64
+const ConfirmDenyIdent = 0x00
+
+// ConfirmDeny 确认否认
+type ConfirmDeny struct {
+	F uint64
 }
 
-func (c *ComFirmDeny) Decode(buf *bytes.Reader) error {
-	afnBytes := make([]byte, 4)
-	_, err := buf.Read(afnBytes)
+func (c *ConfirmDeny) decode(buf *bytes.Reader) error {
+	pn, fn, err := analyzeUnit(buf)
 	if err != nil {
 		return err
 	}
-	pn, fn := analyzeUnit(afnBytes)
-	if len(pn) != 1 || len(fn) != 1 {
-		return errors.New("afn.comFirmDeny: wrong number of parameters")
+	if pn == nil || fn == nil || len(pn) == 0 || len(fn) == 0 {
+		return errors.New("decode dlt1376.1 err : pn fn is empty")
 	}
-	c.fn = fn[0]
-	c.pn = pn[0]
-	if c.pn != 0 {
-		return errors.New("afn.comFirmDeny: pn must be 0")
+	for _, value := range pn {
+		if value != 0 {
+			return errors.New("decode dlt1376.1 err :pn must = 0")
+		}
 	}
+	c.F = fn[0]
 	return nil
 }
 
-func (c *ComFirmDeny) Encode() ([]byte, error) {
-	return encodeUnit(c.pn, c.fn)
-}
-
-func (c *ComFirmDeny) Idents() ([]*Dlt13761Data, error) {
-	var ret []*Dlt13761Data
-	data := &Dlt13761Data{P: c.pn, F: c.fn, Data: nil}
-	ret = append(ret, data)
-	return ret, nil
-}
-
-func (c *ComFirmDeny) Flag() (byte, string) {
-	return COMFIRM_DENY, "确认/否认"
-}
-
-func (c *ComFirmDeny) HasAux() bool {
-	return false
-}
-
-func (c *ComFirmDeny) Append(data *Dlt13761Data) error {
-	c.pn = data.P
-	c.fn = data.F
-	if c.pn != 0 {
-		return errors.New("afn.comFirmDeny: pn must be 0")
+func (c *ConfirmDeny) encode() ([]byte, error) {
+	if c.F == 1 || c.F == 2 {
+		return encodeUnit(0, c.F)
+	} else if c.F == 3 {
+		return nil, nil
+	} else if c.F == 4 {
+		return nil, nil
+	} else {
+		return nil, errors.New("encode dlt1376.1 err : f is out of range, must in (1,2,3,4)")
 	}
-	return nil
+
 }
 
-func init() {
-	Afns[COMFIRM_DENY] = func() Afn {
-		return &ComFirmDeny{}
-	}
+func (c *ConfirmDeny) haAux() bool {
+	return true
+}
+
+func (c *ConfirmDeny) AfnFlag() byte {
+	return ConfirmDenyIdent
 }
