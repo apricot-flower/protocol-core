@@ -1,0 +1,7 @@
+github.com/ecc1/gpio v0.0.0-20200212231225-d40e43fcf8f5 h1:caoskihCyJpXaV3oRLl+jYuE+aLRnfcIprUQ6oBxTh8=
+github.com/ecc1/gpio v0.0.0-20200212231225-d40e43fcf8f5/go.mod h1:ZcIrkf+E8KutUpAcNHOHaf2NYukHYOlYTCDxV5zzn04=
+github.com/ecc1/spi v0.0.0-20230226182530-b0f4c20d714a h1:wKFSDxAFrELZwZHfH8qL60cBUPx4k/As9rknIyS9HVI=
+github.com/ecc1/spi v0.0.0-20230226182530-b0f4c20d714a/go.mod h1:aEx53qKDtY1Ryywz6SVx/K+n3eVGB2tsijuntsITXzA=
+golang.org/x/sys v0.0.0-20200212091648-12a6c2dcc1e4/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+golang.org/x/sys v0.5.0 h1:MUK/U/4lj1t1oPg0HfuXDN/Z1wv31ZJ/YcPiGccS4DU=
+golang.org/x/sys v0.5.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
