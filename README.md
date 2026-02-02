@@ -1,4 +1,5 @@
 # protocol-core
+请关注 https://github.com/VaccariaSeed。该账号下有够优秀的实现
 
 # 使用说明
 
